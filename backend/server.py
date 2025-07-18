@@ -1,6 +1,4 @@
-<file>
-      <absolute_file_name>/app/backend/server.py</absolute_file_name>
-      <content">from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
