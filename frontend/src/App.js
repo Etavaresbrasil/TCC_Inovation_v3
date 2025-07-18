@@ -377,9 +377,10 @@ function App() {
   );
 
   const renderLeaderboard = () => {
-    useEffect(() => {
+    // Fetch leaderboard data when component mounts or view changes
+    if (leaderboard.length === 0) {
       fetchLeaderboard();
-    }, []);
+    }
 
     return (
       <div className="leaderboard-container">
