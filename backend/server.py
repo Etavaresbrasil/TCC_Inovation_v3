@@ -70,7 +70,7 @@ class Challenge(BaseModel):
 class ChallengeCreate(BaseModel):
     title: str
     description: str
-    deadline: Optional[date] = None
+    deadline: Optional[str] = None  # Changed from date to str
     reward: Optional[str] = None
 
 class Solution(BaseModel):
