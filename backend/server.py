@@ -220,8 +220,8 @@ security = HTTPBearer(auto_error=False)
 # Enhanced Pydantic models with validation
 class UserBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="User full name")
-    email: str = Field(..., regex=r'^[^@]+@[^@]+\.[^@]+$', description="Valid email address")
-    type: str = Field(..., regex=r'^(aluno|professor|empresa)$', description="User type")
+    email: str = Field(..., pattern=r'^[^@]+@[^@]+\.[^@]+$', description="Valid email address")
+    type: str = Field(..., pattern=r'^(aluno|professor|empresa)$', description="User type")
     
     @validator('name')
     def validate_name(cls, v):
