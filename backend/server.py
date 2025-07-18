@@ -62,7 +62,7 @@ class Challenge(BaseModel):
     description: str
     creator_id: str
     creator_name: str
-    deadline: Optional[date] = None
+    deadline: Optional[str] = None  # Changed from date to str
     reward: Optional[str] = None
     active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
