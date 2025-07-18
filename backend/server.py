@@ -194,10 +194,7 @@ class DatabaseManager:
                 
         except Exception as e:
             logger.error(f"Failed to initialize sample data: {e}")
-            raise
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize sample data: {e}")
+            # Don't raise the exception to avoid breaking the startup
 
 # Initialize database manager
 db_manager = DatabaseManager()
