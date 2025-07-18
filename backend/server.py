@@ -191,6 +191,9 @@ class DatabaseManager:
                 
                 await self._database.challenges.insert_many(sample_challenges)
                 logger.info(f"Inserted {len(sample_challenges)} sample challenges")
+                
+        except Exception as e:
+            logger.error(f"Failed to initialize sample data: {e}")
 
 # Initialize database manager
 db_manager = DatabaseManager()
