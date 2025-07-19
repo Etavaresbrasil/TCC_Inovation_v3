@@ -17,6 +17,7 @@ function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [stats, setStats] = useState({});
   const [matchingResults, setMatchingResults] = useState(null);
+  const [adminData, setAdminData] = useState(null);
 
   // Auth forms
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
@@ -30,7 +31,13 @@ function App() {
   });
   
   // Challenge form
-  const [challengeForm, setChallengeForm] = useState({ title: '', description: '', deadline: '', reward: '' });
+  const [challengeForm, setChallengeForm] = useState({ 
+    title: '', 
+    description: '', 
+    summary: '',
+    deadline: '', 
+    reward: '' 
+  });
   
   // Solution form
   const [solutionForm, setSolutionForm] = useState({ description: '' });
@@ -127,6 +134,27 @@ function App() {
     }
   };
 
+  const fetchAdminData = async () => {
+    try {
+      const [usersRes, challengesRes, solutionsRes, detailedStatsRes] = await Promise.all([
+        axios.get(`${API}/admin/users`),
+        axios.get(`${API}/admin/challenges`),
+        axios.get(`${API}/admin/solutions`),
+        axios.get(`${API}/admin/detailed-stats`)
+      ]);
+
+      setAdminData({
+        users: usersRes.data,
+        challenges: challengesRes.data,
+        solutions: solutionsRes.data,
+        detailedStats: detailedStatsRes.data
+      });
+    } catch (error) {
+      console.error('Error fetching admin data:', error);
+      alert('Erro ao carregar dados administrativos. Verifique suas permissões.');
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
@@ -136,8 +164,13 @@ function App() {
       setUser(response.data.user);
       setCurrentView('challenges');
       setLoginForm({ email: '', password: '' });
+      
+      // Fetch admin data if user is admin
+      if (response.data.user.type === 'admin') {
+        fetchAdminData();
+      }
     } catch (error) {
-      alert('Erro no login: ' + (error.response?.data?.detail || 'Erro desconhecido'));
+      alert('Erro no login: ' + (error.response?.data?.detail || 'Credenciais inválidas'));
     }
   };
 
@@ -162,6 +195,7 @@ function App() {
         shareExpectations: false,
         expectations: ''
       });
+      alert('Cadastro realizado com sucesso!');
     } catch (error) {
       alert('Erro no registro: ' + (error.response?.data?.detail || 'Erro desconhecido'));
     }
@@ -171,6 +205,7 @@ function App() {
     localStorage.removeItem('token');
     axios.defaults.headers.common['Authorization'] = '';
     setUser(null);
+    setAdminData(null);
     setCurrentView('home');
   };
 
@@ -178,9 +213,10 @@ function App() {
     e.preventDefault();
     try {
       await axios.post(`${API}/challenges`, challengeForm);
-      setChallengeForm({ title: '', description: '', deadline: '', reward: '' });
+      setChallengeForm({ title: '', description: '', summary: '', deadline: '', reward: '' });
       fetchChallenges();
       alert('Desafio criado com sucesso!');
+      setCurrentView('challenges');
     } catch (error) {
       alert('Erro ao criar desafio: ' + (error.response?.data?.detail || 'Erro desconhecido'));
     }
@@ -268,6 +304,9 @@ function App() {
                   <button type="submit" className="submit-btn">
                     <span>Entrar</span>
                   </button>
+                  <div className="login-help">
+                    <small>Admin: admin@pucrs.br / ADMIN</small>
+                  </div>
                 </form>
               </div>
 
@@ -330,7 +369,7 @@ function App() {
                             : 'Suas expectativas:'}
                         </label>
                         <div className="suggestions">
-                          <small>Sugestões: {registerForm.type === 'empresa' ? companyExpectations.join(', ') : studentExpectations.join(', ')}</small>
+                          <small>Sugestões: {registerForm.type === 'empresa' ? companyExpectations.slice(0, 3).join(', ') : studentExpectations.slice(0, 3).join(', ')}</small>
                         </div>
                         <textarea
                           placeholder={registerForm.type === 'empresa' 
@@ -365,7 +404,7 @@ function App() {
           <h2>Desafios de Inovação</h2>
           <p>Explore oportunidades para aplicar seu conhecimento em projetos reais</p>
         </div>
-        {user && (user.type === 'professor' || user.type === 'empresa') && (
+        {user && (user.type === 'professor' || user.type === 'empresa' || user.type === 'admin') && (
           <button onClick={() => setCurrentView('create-challenge')} className="primary-btn">
             <span>+ Criar Desafio</span>
           </button>
@@ -381,7 +420,11 @@ function App() {
                 {challenge.creator_name}
               </div>
             </div>
-            <p className="challenge-description">{challenge.description}</p>
+            
+            <div className="challenge-summary">
+              <p>{challenge.summary || challenge.description.substring(0, 150) + "..."}</p>
+            </div>
+            
             <div className="challenge-meta">
               {challenge.deadline && (
                 <div className="meta-item">
@@ -396,18 +439,107 @@ function App() {
                 </div>
               )}
             </div>
-            <button 
-              onClick={() => {
-                setSelectedChallenge(challenge);
-                fetchSolutions(challenge.id);
-                setCurrentView('solutions');
-              }}
-              className="secondary-btn"
-            >
-              Ver Soluções & Participar
-            </button>
+            
+            <div className="card-actions">
+              <button 
+                onClick={() => {
+                  setSelectedChallenge(challenge);
+                  fetchSolutions(challenge.id);
+                  setCurrentView('challenge-details');
+                }}
+                className="secondary-btn"
+              >
+                Ver Detalhes
+              </button>
+              <button 
+                onClick={() => {
+                  setSelectedChallenge(challenge);
+                  fetchSolutions(challenge.id);
+                  setCurrentView('solutions');
+                }}
+                className="primary-btn"
+              >
+                Participar
+              </button>
+            </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+
+  const renderChallengeDetails = () => (
+    <div className="challenge-details-container">
+      <div className="page-header">
+        <div className="header-content">
+          <h2>{selectedChallenge?.title}</h2>
+          <div className="challenge-creator">
+            Por: <strong>{selectedChallenge?.creator_name}</strong>
+          </div>
+        </div>
+        <div className="header-actions">
+          <button onClick={() => setCurrentView('challenges')} className="secondary-btn">
+            ← Voltar aos Desafios
+          </button>
+          <button 
+            onClick={() => {
+              fetchSolutions(selectedChallenge.id);
+              setCurrentView('solutions');
+            }} 
+            className="primary-btn"
+          >
+            Participar do Desafio
+          </button>
+        </div>
+      </div>
+
+      <div className="challenge-full-content">
+        <div className="challenge-description">
+          <h3>📋 Descrição Completa</h3>
+          <div className="description-text">
+            <p>{selectedChallenge?.description}</p>
+          </div>
+        </div>
+
+        <div className="challenge-details-meta">
+          <div className="meta-grid">
+            {selectedChallenge?.deadline && (
+              <div className="meta-card">
+                <div className="meta-icon">📅</div>
+                <div className="meta-content">
+                  <h4>Data Limite</h4>
+                  <p>{new Date(selectedChallenge.deadline).toLocaleDateString()}</p>
+                </div>
+              </div>
+            )}
+            
+            {selectedChallenge?.reward && (
+              <div className="meta-card">
+                <div className="meta-icon">🏆</div>
+                <div className="meta-content">
+                  <h4>Recompensa</h4>
+                  <p>{selectedChallenge.reward}</p>
+                </div>
+              </div>
+            )}
+            
+            <div className="meta-card">
+              <div className="meta-icon">💡</div>
+              <div className="meta-content">
+                <h4>Status</h4>
+                <p>{selectedChallenge?.active ? 'Ativo' : 'Inativo'}</p>
+              </div>
+            </div>
+
+            <div className="meta-card">
+              <div className="meta-icon">👥</div>
+              <div className="meta-content">
+                <h4>Criado por</h4>
+                <p>{selectedChallenge?.creator_name}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -429,6 +561,19 @@ function App() {
             required
           />
         </div>
+        
+        <div className="form-group">
+          <label>Resumo (Opcional)</label>
+          <input
+            type="text"
+            placeholder="Resumo breve para listagem (máx. 150 caracteres)"
+            value={challengeForm.summary}
+            onChange={(e) => setChallengeForm({...challengeForm, summary: e.target.value})}
+            maxLength="150"
+          />
+          <small>Se não preenchido, será gerado automaticamente</small>
+        </div>
+        
         <div className="form-group">
           <label>Descrição Detalhada</label>
           <textarea
@@ -439,6 +584,7 @@ function App() {
             rows="6"
           />
         </div>
+        
         <div className="form-row">
           <div className="form-group">
             <label>Data Limite (Opcional)</label>
@@ -458,6 +604,7 @@ function App() {
             />
           </div>
         </div>
+        
         <div className="form-actions">
           <button type="button" onClick={() => setCurrentView('challenges')} className="secondary-btn">
             Cancelar
@@ -475,7 +622,7 @@ function App() {
       <div className="page-header">
         <div className="header-content">
           <h2>{selectedChallenge?.title}</h2>
-          <p>{selectedChallenge?.description}</p>
+          <p>Soluções e participações para este desafio</p>
         </div>
         <button onClick={() => setCurrentView('challenges')} className="secondary-btn">
           ← Voltar aos Desafios
@@ -666,6 +813,127 @@ function App() {
     );
   };
 
+  const renderAdmin = () => {
+    if (!adminData) {
+      fetchAdminData();
+      return <div className="loading">Carregando dados administrativos...</div>;
+    }
+
+    return (
+      <div className="admin-container">
+        <div className="page-header">
+          <div className="header-content">
+            <h2>👑 Painel Administrativo</h2>
+            <p>Visão completa da plataforma e resultados</p>
+          </div>
+          <button onClick={fetchAdminData} className="primary-btn">
+            🔄 Atualizar Dados
+          </button>
+        </div>
+
+        <div className="admin-stats">
+          <div className="admin-stat-card">
+            <h3>{adminData.detailedStats.students}</h3>
+            <p>Estudantes</p>
+          </div>
+          <div className="admin-stat-card">
+            <h3>{adminData.detailedStats.companies}</h3>
+            <p>Empresas</p>
+          </div>
+          <div className="admin-stat-card">
+            <h3>{adminData.detailedStats.professors}</h3>
+            <p>Professores</p>
+          </div>
+          <div className="admin-stat-card">
+            <h3>{adminData.detailedStats.users_with_expectations}</h3>
+            <p>Com Expectativas</p>
+          </div>
+        </div>
+
+        <div className="admin-sections">
+          <div className="admin-section">
+            <h3>👥 Usuários Cadastrados ({adminData.users.length})</h3>
+            <div className="admin-list">
+              {adminData.users.slice(0, 10).map(user => (
+                <div key={user.id} className="admin-list-item">
+                  <div className="user-info">
+                    <strong>{user.name}</strong>
+                    <span className="user-type">{user.type}</span>
+                  </div>
+                  <div className="user-points">{user.points} pts</div>
+                  {user.expectations && (
+                    <div className="user-expectations">
+                      <small>{user.expectations.substring(0, 100)}...</small>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="admin-section">
+            <h3>🎯 Desafios Criados ({adminData.challenges.length})</h3>
+            <div className="admin-list">
+              {adminData.challenges.slice(0, 10).map(challenge => (
+                <div key={challenge.id} className="admin-list-item">
+                  <div className="challenge-info">
+                    <strong>{challenge.title}</strong>
+                    <span>Por: {challenge.creator_name}</span>
+                  </div>
+                  <div className="challenge-status">
+                    {challenge.active ? '🟢 Ativo' : '🔴 Inativo'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="admin-section">
+            <h3>💡 Soluções Submetidas ({adminData.solutions.length})</h3>
+            <div className="admin-list">
+              {adminData.solutions.slice(0, 10).map(solution => (
+                <div key={solution.id} className="admin-list-item">
+                  <div className="solution-info">
+                    <strong>Por: {solution.author_name}</strong>
+                    <span>{solution.votes} votos</span>
+                  </div>
+                  <div className="solution-preview">
+                    <small>{solution.description.substring(0, 80)}...</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="admin-analytics">
+          <h3>📊 Análise de Resultados</h3>
+          <div className="analytics-grid">
+            <div className="analytics-card">
+              <h4>Top Soluções</h4>
+              {adminData.detailedStats.top_solutions?.map((sol, i) => (
+                <div key={i} className="analytics-item">
+                  <span>{sol.title}</span>
+                  <span>{sol.votes} votos</span>
+                </div>
+              ))}
+            </div>
+            
+            <div className="analytics-card">
+              <h4>Usuários Recentes</h4>
+              {adminData.detailedStats.recent_users?.map((user, i) => (
+                <div key={i} className="analytics-item">
+                  <span>{user.name}</span>
+                  <span>{user.type}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="App">
       <nav className="navbar">
@@ -697,6 +965,14 @@ function App() {
           >
             Matching
           </button>
+          {user && user.type === 'admin' && (
+            <button 
+              onClick={() => setCurrentView('admin')} 
+              className={currentView === 'admin' ? 'active' : ''}
+            >
+              Admin
+            </button>
+          )}
           {user && (
             <div className="user-info">
               <span>Olá, {user.name}! ({user.points} pts)</span>
@@ -709,10 +985,12 @@ function App() {
       <main className="main-content">
         {currentView === 'home' && renderHome()}
         {currentView === 'challenges' && renderChallenges()}
+        {currentView === 'challenge-details' && renderChallengeDetails()}
         {currentView === 'create-challenge' && renderCreateChallenge()}
         {currentView === 'solutions' && renderSolutions()}
         {currentView === 'leaderboard' && renderLeaderboard()}
         {currentView === 'matching' && renderMatching()}
+        {currentView === 'admin' && renderAdmin()}
       </main>
     </div>
   );

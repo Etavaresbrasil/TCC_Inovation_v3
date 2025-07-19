@@ -95,6 +95,18 @@ class DatabaseManager:
             
             if user_count == 0:
                 sample_users = [
+                    # ADMIN USER
+                    {
+                        "id": str(uuid.uuid4()),
+                        "name": "Administrador do Sistema",
+                        "email": "admin@pucrs.br",
+                        "password_hash": hashlib.sha256("ADMIN".encode()).hexdigest(),
+                        "type": "admin",
+                        "points": 1000,
+                        "expectations": None,
+                        "created_at": datetime.utcnow()
+                    },
+                    # Regular users
                     {
                         "id": str(uuid.uuid4()),
                         "name": "João Silva",
@@ -158,16 +170,17 @@ class DatabaseManager:
                 ]
                 
                 await self._database.users.insert_many(sample_users)
-                logger.info(f"Inserted {len(sample_users)} sample users with expectations")
+                logger.info(f"Inserted {len(sample_users)} sample users including ADMIN")
                 
                 # Sample challenges
                 sample_challenges = [
                     {
                         "id": str(uuid.uuid4()),
                         "title": "Sistema de Gestão Sustentável",
-                        "description": "Desenvolver uma plataforma para otimizar o consumo de energia em edifícios corporativos, utilizando sensores IoT e algoritmos de machine learning para reduzir custos e impacto ambiental.",
-                        "creator_id": sample_users[0]["id"],
-                        "creator_name": sample_users[0]["name"],
+                        "description": "Desenvolver uma plataforma para otimizar o consumo de energia em edifícios corporativos, utilizando sensores IoT e algoritmos de machine learning para reduzir custos e impacto ambiental. A solução deve incluir dashboard em tempo real, alertas automáticos e relatórios de economia gerada.",
+                        "summary": "Plataforma IoT + ML para otimização de energia em edifícios corporativos com dashboard em tempo real.",
+                        "creator_id": sample_users[1]["id"],
+                        "creator_name": sample_users[1]["name"],
                         "deadline": "2025-06-15",
                         "reward": "R$ 10.000 + Estágio na empresa",
                         "active": True,
@@ -176,9 +189,10 @@ class DatabaseManager:
                     {
                         "id": str(uuid.uuid4()),
                         "title": "App de Mobilidade Urbana Inteligente",
-                        "description": "Criar um aplicativo que integre dados de transporte público, trânsito e rotas de bicicleta para otimizar deslocamentos urbanos, incluindo funcionalidades de gamificação para incentivar mobilidade sustentável.",
-                        "creator_id": sample_users[5]["id"],
-                        "creator_name": sample_users[5]["name"],
+                        "description": "Criar um aplicativo que integre dados de transporte público, trânsito e rotas de bicicleta para otimizar deslocamentos urbanos, incluindo funcionalidades de gamificação para incentivar mobilidade sustentável. O app deve ter GPS, integração com APIs de transporte e sistema de pontuação para usuários ecológicos.",
+                        "summary": "App integrado de transporte público, trânsito e rotas sustentáveis com gamificação.",
+                        "creator_id": sample_users[6]["id"],
+                        "creator_name": sample_users[6]["name"],
                         "deadline": "2025-07-20",
                         "reward": "R$ 15.000 + Mentoria técnica",
                         "active": True,
@@ -187,9 +201,10 @@ class DatabaseManager:
                     {
                         "id": str(uuid.uuid4()),
                         "title": "Plataforma de Educação Adaptativa com IA",
-                        "description": "Desenvolver uma solução educacional que utiliza inteligência artificial para personalizar o aprendizado de estudantes, adaptando conteúdo e metodologia conforme o perfil e progresso individual.",
-                        "creator_id": sample_users[4]["id"],
-                        "creator_name": sample_users[4]["name"],
+                        "description": "Desenvolver uma solução educacional que utiliza inteligência artificial para personalizar o aprendizado de estudantes, adaptando conteúdo e metodologia conforme o perfil e progresso individual. A plataforma deve incluir análise de comportamento, recomendações automáticas e relatórios para professores.",
+                        "summary": "Plataforma educacional com IA para personalizar aprendizado e adaptar conteúdo automaticamente.",
+                        "creator_id": sample_users[5]["id"],
+                        "creator_name": sample_users[5]["name"],
                         "deadline": "2025-08-10",
                         "reward": "R$ 8.000 + Publicação em revista científica",
                         "active": True,
@@ -198,7 +213,7 @@ class DatabaseManager:
                 ]
                 
                 await self._database.challenges.insert_many(sample_challenges)
-                logger.info(f"Inserted {len(sample_challenges)} sample challenges")
+                logger.info(f"Inserted {len(sample_challenges)} sample challenges with summaries")
                 
         except Exception as e:
             logger.error(f"Failed to initialize sample data: {e}")
@@ -229,7 +244,7 @@ security = HTTPBearer(auto_error=False)
 class UserBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="User full name")
     email: str = Field(..., pattern=r'^[^@]+@[^@]+\.[^@]+$', description="Valid email address")
-    type: str = Field(..., pattern=r'^(aluno|professor|empresa)$', description="User type")
+    type: str = Field(..., pattern=r'^(aluno|professor|empresa|admin)$', description="User type")
     
     @validator('name')
     def validate_name(cls, v):
@@ -270,6 +285,7 @@ class UserResponse(UserBase):
 class ChallengeBase(BaseModel):
     title: str = Field(..., min_length=5, max_length=200, description="Challenge title")
     description: str = Field(..., min_length=10, max_length=2000, description="Challenge description")
+    summary: Optional[str] = Field(None, max_length=300, description="Challenge summary")
     deadline: Optional[str] = Field(None, description="Challenge deadline (YYYY-MM-DD)")
     reward: Optional[str] = Field(None, max_length=200, description="Challenge reward")
     
@@ -280,6 +296,12 @@ class ChallengeBase(BaseModel):
     @validator('description')
     def validate_description(cls, v):
         return v.strip()
+    
+    @validator('summary')
+    def validate_summary(cls, v):
+        if v:
+            return v.strip()
+        return v
 
 class ChallengeCreate(ChallengeBase):
     pass
@@ -389,6 +411,13 @@ class AuthService:
             return await AuthService.get_current_user(credentials)
         except HTTPException:
             return None
+
+# Admin authorization
+async def require_admin(current_user: UserResponse = Depends(AuthService.get_current_user)) -> UserResponse:
+    """Require admin privileges"""
+    if current_user.type != 'admin':
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    return current_user
 
 # Matching Analysis Service
 class MatchingService:
@@ -555,17 +584,17 @@ async def register_user(user_data: UserCreate) -> UserResponse:
     if existing_user:
         raise HTTPException(
             status_code=400, 
-            detail="Email address already registered. Please use a different email."
+            detail="Email already registered. Please use a different email."
         )
     
     # Create new user
     user_dict = user_data.dict()
     user_dict['password_hash'] = SecurityUtils.hash_password(user_data.password)
     del user_dict['password']
-    del user_dict['shareExpectations']  # Remove the flag, keep only expectations
     
-    # Only keep expectations if they shared them
-    if not user_data.shareExpectations or not user_data.expectations:
+    # Handle expectations properly
+    share_expectations = user_dict.pop('shareExpectations', False)
+    if not share_expectations or not user_dict.get('expectations'):
         user_dict['expectations'] = None
     
     user_obj = User(**user_dict)
@@ -611,17 +640,22 @@ async def create_challenge(
     challenge_data: ChallengeCreate,
     current_user: UserResponse = Depends(AuthService.get_current_user)
 ) -> Challenge:
-    """Create a new challenge (professors and companies only)"""
+    """Create a new challenge (professors, companies and admins)"""
     
     # Authorization check
-    if current_user.type not in ['professor', 'empresa']:
+    if current_user.type not in ['professor', 'empresa', 'admin']:
         raise HTTPException(
             status_code=403,
-            detail="Only professors and companies can create challenges"
+            detail="Only professors, companies and admins can create challenges"
         )
     
-    # Create challenge
+    # Auto-generate summary if not provided
     challenge_dict = challenge_data.dict()
+    if not challenge_dict.get('summary'):
+        # Create a summary from first 150 characters of description
+        description = challenge_dict['description']
+        challenge_dict['summary'] = description[:150] + "..." if len(description) > 150 else description
+    
     challenge_dict.update({
         'creator_id': current_user.id,
         'creator_name': current_user.name
@@ -822,6 +856,77 @@ async def get_matching_analysis() -> Dict[str, Any]:
     
     return await MatchingService.generate_matching_analysis()
 
+# Admin endpoints
+@api_router.get("/admin/users", response_model=List[UserResponse], summary="Admin: List all users")
+@handle_exceptions
+async def admin_list_users(admin_user: UserResponse = Depends(require_admin)) -> List[UserResponse]:
+    """Admin only: Get all users with their expectations"""
+    
+    users_cursor = db_manager.db.users.find().sort("created_at", -1).limit(1000)
+    users = await users_cursor.to_list(length=1000)
+    
+    return [UserResponse(**user) for user in users]
+
+@api_router.get("/admin/challenges", response_model=List[Challenge], summary="Admin: List all challenges")
+@handle_exceptions
+async def admin_list_challenges(admin_user: UserResponse = Depends(require_admin)) -> List[Challenge]:
+    """Admin only: Get all challenges including inactive ones"""
+    
+    challenges_cursor = db_manager.db.challenges.find().sort("created_at", -1).limit(1000)
+    challenges = await challenges_cursor.to_list(length=1000)
+    
+    return [Challenge(**challenge) for challenge in challenges]
+
+@api_router.get("/admin/solutions", response_model=List[Solution], summary="Admin: List all solutions")
+@handle_exceptions
+async def admin_list_solutions(admin_user: UserResponse = Depends(require_admin)) -> List[Solution]:
+    """Admin only: Get all solutions with detailed information"""
+    
+    solutions_cursor = db_manager.db.solutions.find().sort("votes", -1).limit(1000)
+    solutions = await solutions_cursor.to_list(length=1000)
+    
+    return [Solution(**solution) for solution in solutions]
+
+@api_router.get("/admin/detailed-stats", summary="Admin: Get detailed statistics")
+@handle_exceptions
+async def admin_detailed_stats(admin_user: UserResponse = Depends(require_admin)) -> Dict[str, Any]:
+    """Admin only: Get comprehensive platform analytics"""
+    
+    # Get detailed statistics
+    stats = await asyncio.gather(
+        db_manager.db.challenges.count_documents({"active": True}),
+        db_manager.db.challenges.count_documents({"active": False}),
+        db_manager.db.solutions.count_documents({}),
+        db_manager.db.users.count_documents({"type": "aluno"}),
+        db_manager.db.users.count_documents({"type": "professor"}),
+        db_manager.db.users.count_documents({"type": "empresa"}),
+        db_manager.db.users.count_documents({"type": "admin"}),
+        db_manager.db.votes.count_documents({}),
+        db_manager.db.users.count_documents({"expectations": {"$exists": True, "$ne": None}})
+    )
+    
+    # Get top solutions
+    top_solutions = await db_manager.db.solutions.find().sort("votes", -1).limit(5).to_list(5)
+    
+    # Get recent activity
+    recent_users = await db_manager.db.users.find().sort("created_at", -1).limit(5).to_list(5)
+    recent_challenges = await db_manager.db.challenges.find().sort("created_at", -1).limit(5).to_list(5)
+    
+    return {
+        "active_challenges": stats[0],
+        "inactive_challenges": stats[1],
+        "total_solutions": stats[2],
+        "students": stats[3],
+        "professors": stats[4],
+        "companies": stats[5],
+        "admins": stats[6],
+        "total_votes": stats[7],
+        "users_with_expectations": stats[8],
+        "top_solutions": [{"title": f"Solution by {s['author_name']}", "votes": s["votes"]} for s in top_solutions],
+        "recent_users": [{"name": u["name"], "type": u["type"]} for u in recent_users],
+        "recent_challenges": [{"title": c["title"], "creator": c["creator_name"]} for c in recent_challenges]
+    }
+
 # User management endpoints (for admin purposes)
 @api_router.get("/users", response_model=List[UserResponse], summary="List all users")
 @handle_exceptions
@@ -886,6 +991,7 @@ async def startup_event():
         await db_manager.initialize()
         logger.info("🚀 PUC-RS Innovation Platform started successfully!")
         logger.info("📊 Access API documentation at: /api/docs")
+        logger.info("👑 ADMIN user created: admin@pucrs.br / ADMIN")
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
         raise
@@ -908,7 +1014,8 @@ async def root():
         "version": "2.0.0",
         "description": "Connecting business challenges with academic innovation",
         "docs": "/api/docs",
-        "health": "/api/health"
+        "health": "/api/health",
+        "admin": "admin@pucrs.br / ADMIN"
     }
 
 if __name__ == "__main__":
