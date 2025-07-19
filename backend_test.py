@@ -350,6 +350,7 @@ class PlatformAPITester:
         
         # Basic endpoint tests
         print("\n📊 Testing Basic Endpoints...")
+        self.test_health_check()
         self.test_stats_endpoint()
         self.test_unauthorized_access()
         self.test_invalid_login()
@@ -359,6 +360,12 @@ class PlatformAPITester:
         self.test_user_registration('aluno')
         self.test_user_registration('professor')
         self.test_user_registration('empresa')
+        
+        # NEW: User registration with expectations
+        print("\n🆕 Testing NEW User Registration with Expectations...")
+        self.test_user_registration_with_expectations('empresa')
+        self.test_user_registration_with_expectations('aluno')
+        self.test_user_registration_with_expectations('professor')
         
         # Authentication tests
         print("\n🔐 Testing Authentication...")
@@ -394,6 +401,10 @@ class PlatformAPITester:
         # Leaderboard tests
         print("\n🏆 Testing Leaderboard...")
         self.test_leaderboard()
+        
+        # NEW: Matching analysis tests
+        print("\n🆕 Testing NEW Matching Analysis...")
+        self.test_matching_analysis()
         
         # Final stats check
         print("\n📈 Final Stats Check...")
