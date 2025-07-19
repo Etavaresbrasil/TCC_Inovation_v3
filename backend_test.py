@@ -279,6 +279,42 @@ class PlatformAPITester:
         else:
             return self.log_test("Leaderboard", False, f"- Status: {status}, Data: {response_data}")
 
+    def test_matching_analysis(self):
+        """Test NEW matching analysis endpoint"""
+        success, status, response_data = self.make_request('GET', 'matching-analysis')
+        
+        # Check if response has expected structure
+        expected_keys = ['totalMatches', 'companies', 'students', 'companyExpectations', 'studentExpectations', 'topMatches']
+        has_all_keys = success and all(key in response_data for key in expected_keys)
+        
+        # Validate data types
+        valid_structure = False
+        if has_all_keys:
+            valid_structure = (
+                isinstance(response_data['totalMatches'], (int, float)) and
+                isinstance(response_data['companies'], int) and
+                isinstance(response_data['students'], int) and
+                isinstance(response_data['companyExpectations'], list) and
+                isinstance(response_data['studentExpectations'], list) and
+                isinstance(response_data['topMatches'], list)
+            )
+        
+        if success and has_all_keys and valid_structure:
+            return self.log_test("Matching Analysis", True, 
+                               f"- Total matches: {response_data['totalMatches']}%, Companies: {response_data['companies']}, Students: {response_data['students']}")
+        else:
+            return self.log_test("Matching Analysis", False, 
+                               f"- Status: {status}, Structure valid: {valid_structure if success else 'Failed'}")
+
+    def test_health_check(self):
+        """Test health check endpoint"""
+        success, status, response_data = self.make_request('GET', 'health')
+        
+        if success and response_data.get('status') == 'healthy':
+            return self.log_test("Health Check", True, f"- Status: {response_data.get('status')}")
+        else:
+            return self.log_test("Health Check", False, f"- Status: {status}, Data: {response_data}")
+
     def test_invalid_login(self):
         """Test login with invalid credentials"""
         invalid_data = {
