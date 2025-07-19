@@ -14,6 +14,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import asyncio
 from functools import wraps
 import traceback
+import re
+from collections import Counter
 
 # Professional logging setup
 logging.basicConfig(
@@ -86,7 +88,7 @@ class DatabaseManager:
             logger.info("Database connection closed")
     
     async def _initialize_sample_data(self):
-        """Initialize sample data with Brazilian names"""
+        """Initialize sample data with Brazilian names and realistic expectations"""
         try:
             # Check if users already exist
             user_count = await self._database.users.count_documents({})
@@ -100,6 +102,7 @@ class DatabaseManager:
                         "password_hash": hashlib.sha256("123456".encode()).hexdigest(),
                         "type": "professor",
                         "points": 50,
+                        "expectations": "Busco alunos com pensamento crítico, adaptabilidade, competências digitais e habilidades de comunicação eficaz. Valorizo muito a criatividade e capacidade de trabalho em equipe.",
                         "created_at": datetime.utcnow()
                     },
                     {
@@ -109,15 +112,17 @@ class DatabaseManager:
                         "password_hash": hashlib.sha256("123456".encode()).hexdigest(),
                         "type": "aluno",
                         "points": 85,
+                        "expectations": "Procuro uma empresa com ambiente inclusivo, oportunidades de crescimento profissional, tecnologia moderna, horário flexível e que valorize propósito e responsabilidade social.",
                         "created_at": datetime.utcnow()
                     },
                     {
                         "id": str(uuid.uuid4()),
                         "name": "Pedro Santos",
-                        "email": "pedro.santos@empresa.com.br",
+                        "email": "pedro.santos@techcorp.com.br",
                         "password_hash": hashlib.sha256("123456".encode()).hexdigest(),
                         "type": "empresa",
                         "points": 30,
+                        "expectations": "Nossa empresa busca recém-formados com competências digitais, inteligência emocional, capacidade de inovação e forte ética profissional. Valorizamos diversidade e aprendizado contínuo.",
                         "created_at": datetime.utcnow()
                     },
                     {
@@ -127,6 +132,7 @@ class DatabaseManager:
                         "password_hash": hashlib.sha256("123456".encode()).hexdigest(),
                         "type": "aluno",
                         "points": 120,
+                        "expectations": "Busco empresas que ofereçam planos de saúde, cultura colaborativa, feedback regular, possibilidade de trabalho remoto e oportunidades de desenvolvimento pessoal e profissional.",
                         "created_at": datetime.utcnow()
                     },
                     {
@@ -136,6 +142,7 @@ class DatabaseManager:
                         "password_hash": hashlib.sha256("123456".encode()).hexdigest(),
                         "type": "professor",
                         "points": 75,
+                        "expectations": "Procuro estudantes com pensamento crítico, habilidades de resolução de problemas, consciência cultural, capacidade de comunicação e comprometimento com ética e responsabilidade.",
                         "created_at": datetime.utcnow()
                     },
                     {
@@ -145,12 +152,13 @@ class DatabaseManager:
                         "password_hash": hashlib.sha256("123456".encode()).hexdigest(),
                         "type": "empresa",
                         "points": 95,
+                        "expectations": "Buscamos talentos com adaptabilidade, trabalho em equipe, criatividade, competências tecnológicas e forte capacidade de comunicação. Valorizamos diversidade e inovação.",
                         "created_at": datetime.utcnow()
                     }
                 ]
                 
                 await self._database.users.insert_many(sample_users)
-                logger.info(f"Inserted {len(sample_users)} sample users")
+                logger.info(f"Inserted {len(sample_users)} sample users with expectations")
                 
                 # Sample challenges
                 sample_challenges = [
@@ -235,6 +243,8 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6, max_length=100, description="User password")
+    shareExpectations: Optional[bool] = False
+    expectations: Optional[str] = Field(None, max_length=1000, description="User expectations")
 
 class UserLogin(BaseModel):
     email: str = Field(..., description="User email")
@@ -244,6 +254,7 @@ class User(UserBase):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     password_hash: str
     points: int = 0
+    expectations: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
@@ -254,6 +265,7 @@ class User(UserBase):
 class UserResponse(UserBase):
     id: str
     points: int
+    expectations: Optional[str] = None
 
 class ChallengeBase(BaseModel):
     title: str = Field(..., min_length=5, max_length=200, description="Challenge title")
@@ -378,12 +390,165 @@ class AuthService:
         except HTTPException:
             return None
 
+# Matching Analysis Service
+class MatchingService:
+    
+    # Predefined keywords for analysis
+    COMPANY_KEYWORDS = {
+        'adaptabilidade': ['adaptabilidade', 'adaptação', 'flexibilidade', 'mudança'],
+        'pensamento_critico': ['pensamento crítico', 'crítico', 'análise', 'analítico'],
+        'competencias_digitais': ['digital', 'tecnologia', 'programação', 'tech', 'dados'],
+        'trabalho_equipe': ['equipe', 'colaboração', 'time', 'colaborativo'],
+        'comunicacao': ['comunicação', 'comunicar', 'apresentação'],
+        'criatividade': ['criatividade', 'criativo', 'inovação', 'inovador'],
+        'inteligencia_emocional': ['emocional', 'relacionamento', 'interpessoal'],
+        'diversidade': ['diversidade', 'inclusão', 'cultural'],
+        'aprendizado': ['aprendizado', 'desenvolvimento', 'crescimento'],
+        'etica': ['ética', 'responsabilidade', 'valores']
+    }
+    
+    STUDENT_KEYWORDS = {
+        'beneficios': ['benefícios', 'saúde', 'plano', 'vale'],
+        'flexibilidade': ['flexível', 'remoto', 'horário', 'home office'],
+        'crescimento': ['crescimento', 'desenvolvimento', 'carreira'],
+        'ambiente_inclusivo': ['inclusivo', 'diverso', 'acolhedor'],
+        'tecnologia': ['tecnologia', 'inovação', 'moderno'],
+        'proposito': ['propósito', 'social', 'sustentabilidade'],
+        'feedback': ['feedback', 'reconhecimento', 'valorização'],
+        'cultura': ['cultura', 'ambiente', 'clima'],
+        'colaboracao': ['colaborativo', 'equipe', 'participativo'],
+        'estabilidade': ['estabilidade', 'segurança', 'permanência']
+    }
+    
+    @staticmethod
+    def analyze_text(text: str, keywords_dict: dict) -> dict:
+        """Analyze text and return keyword matches with percentages"""
+        if not text:
+            return {}
+        
+        text_lower = text.lower()
+        results = {}
+        total_matches = 0
+        
+        for category, keywords in keywords_dict.items():
+            matches = 0
+            for keyword in keywords:
+                if keyword in text_lower:
+                    matches += 1
+            
+            if matches > 0:
+                results[category] = min(matches * 20, 100)  # Cap at 100%
+                total_matches += matches
+        
+        return results
+    
+    @staticmethod
+    async def generate_matching_analysis() -> dict:
+        """Generate comprehensive matching analysis"""
+        try:
+            # Get all users with expectations
+            users_cursor = db_manager.db.users.find({"expectations": {"$exists": True, "$ne": None}})
+            users = await users_cursor.to_list(length=1000)
+            
+            company_expectations = []
+            student_expectations = []
+            
+            # Separate by type
+            for user in users:
+                if user.get('expectations'):
+                    if user['type'] == 'empresa':
+                        company_expectations.append(user['expectations'])
+                    elif user['type'] == 'aluno':
+                        student_expectations.append(user['expectations'])
+            
+            # Analyze company expectations
+            company_analysis = {}
+            for text in company_expectations:
+                analysis = MatchingService.analyze_text(text, MatchingService.COMPANY_KEYWORDS)
+                for category, score in analysis.items():
+                    if category not in company_analysis:
+                        company_analysis[category] = []
+                    company_analysis[category].append(score)
+            
+            # Analyze student expectations
+            student_analysis = {}
+            for text in student_expectations:
+                analysis = MatchingService.analyze_text(text, MatchingService.STUDENT_KEYWORDS)
+                for category, score in analysis.items():
+                    if category not in student_analysis:
+                        student_analysis[category] = []
+                    student_analysis[category].append(score)
+            
+            # Calculate averages and format results
+            company_results = []
+            for category, scores in company_analysis.items():
+                avg_score = sum(scores) / len(scores) if scores else 0
+                formatted_category = category.replace('_', ' ').title()
+                company_results.append({
+                    'expectation': formatted_category,
+                    'percentage': round(avg_score, 1)
+                })
+            
+            student_results = []
+            for category, scores in student_analysis.items():
+                avg_score = sum(scores) / len(scores) if scores else 0
+                formatted_category = category.replace('_', ' ').title()
+                student_results.append({
+                    'expectation': formatted_category,
+                    'percentage': round(avg_score, 1)
+                })
+            
+            # Sort by percentage
+            company_results.sort(key=lambda x: x['percentage'], reverse=True)
+            student_results.sort(key=lambda x: x['percentage'], reverse=True)
+            
+            # Calculate overall compatibility
+            total_compatibility = 0
+            matches_count = 0
+            
+            if company_results and student_results:
+                total_compatibility = (sum(r['percentage'] for r in company_results[:5]) + 
+                                    sum(r['percentage'] for r in student_results[:5])) / 10
+                matches_count = min(len(company_results), len(student_results))
+            
+            # Generate top matches
+            top_matches = []
+            if matches_count > 0:
+                for i in range(min(3, matches_count)):
+                    match_score = (company_results[i]['percentage'] + 
+                                 (student_results[i]['percentage'] if i < len(student_results) else 0)) / 2
+                    
+                    top_matches.append({
+                        'score': round(match_score, 1),
+                        'commonExpectations': f"{company_results[i]['expectation']} & Ambiente Profissional"
+                    })
+            
+            return {
+                'totalMatches': round(total_compatibility, 1),
+                'companies': len(company_expectations),
+                'students': len(student_expectations),
+                'companyExpectations': company_results[:8],
+                'studentExpectations': student_results[:8],
+                'topMatches': top_matches
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating matching analysis: {e}")
+            return {
+                'totalMatches': 0,
+                'companies': 0,
+                'students': 0,
+                'companyExpectations': [],
+                'studentExpectations': [],
+                'topMatches': []
+            }
+
 # API Endpoints with enhanced functionality
 
 @api_router.post("/register", response_model=UserResponse, summary="Register new user")
 @handle_exceptions
 async def register_user(user_data: UserCreate) -> UserResponse:
-    """Register a new user with enhanced validation"""
+    """Register a new user with enhanced validation and expectations"""
     
     # Check if email already exists
     existing_user = await db_manager.db.users.find_one({"email": user_data.email})
@@ -397,6 +562,11 @@ async def register_user(user_data: UserCreate) -> UserResponse:
     user_dict = user_data.dict()
     user_dict['password_hash'] = SecurityUtils.hash_password(user_data.password)
     del user_dict['password']
+    del user_dict['shareExpectations']  # Remove the flag, keep only expectations
+    
+    # Only keep expectations if they shared them
+    if not user_data.shareExpectations or not user_data.expectations:
+        user_dict['expectations'] = None
     
     user_obj = User(**user_dict)
     
@@ -644,6 +814,13 @@ async def get_platform_stats() -> Dict[str, int]:
         "total_users": stats[2],
         "total_votes": stats[3]
     }
+
+@api_router.get("/matching-analysis", summary="Get matching analysis")
+@handle_exceptions
+async def get_matching_analysis() -> Dict[str, Any]:
+    """Get comprehensive matching analysis between companies and students"""
+    
+    return await MatchingService.generate_matching_analysis()
 
 # User management endpoints (for admin purposes)
 @api_router.get("/users", response_model=List[UserResponse], summary="List all users")
