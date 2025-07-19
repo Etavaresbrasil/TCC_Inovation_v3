@@ -92,6 +92,35 @@ class PlatformAPITester:
         else:
             return self.log_test(f"Register {user_type.title()}", False, f"- Status: {status}, Error: {response_data}")
 
+    def test_user_registration_with_expectations(self, user_type):
+        """Test NEW user registration with expectations feature"""
+        timestamp = datetime.now().strftime("%H%M%S")
+        
+        # Define expectations based on user type
+        expectations_map = {
+            "empresa": "Buscamos profissionais com pensamento crítico, adaptabilidade, competências digitais e trabalho em equipe. Valorizamos criatividade e inovação.",
+            "aluno": "Procuro empresa com ambiente inclusivo, oportunidades de crescimento, tecnologia moderna e horário flexível. Valorizo propósito e responsabilidade social.",
+            "professor": "Busco estudantes com pensamento crítico, habilidades de resolução de problemas e comprometimento com ética e responsabilidade."
+        }
+        
+        user_data = {
+            "name": f"Test {user_type.title()} Expectations {timestamp}",
+            "email": f"test_{user_type}_exp_{timestamp}@test.com",
+            "password": "TestPass123!",
+            "type": user_type,
+            "shareExpectations": True,
+            "expectations": expectations_map.get(user_type, "Test expectations")
+        }
+        
+        success, status, response_data = self.make_request('POST', 'register', user_data, expected_status=200)
+        
+        if success and response_data.get('expectations') is not None:
+            return self.log_test(f"Register {user_type.title()} with Expectations", True, 
+                               f"- ID: {response_data.get('id', 'N/A')}, Has expectations: Yes")
+        else:
+            return self.log_test(f"Register {user_type.title()} with Expectations", False, 
+                               f"- Status: {status}, Has expectations: {response_data.get('expectations') is not None if success else 'Failed'}")
+
     def test_user_login(self, user_type):
         """Test user login"""
         if user_type not in self.users:
